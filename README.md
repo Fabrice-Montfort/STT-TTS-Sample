@@ -2,4 +2,4 @@
 Basic mobile application for Android and iOS to demonstrate voice recognition and speech synthesis
 
 ## Tutorial
-Your can read a full tutorial <a href="http://fabricemontfort.com/firebase-and-as3-ep-1-init-the-project/" target="_blank">here</a>
+Your can read a full tutorial <a href="http://fabricemontfort.com/voice-recognition-and-speech-synthesis-in-as3-with-air/" target="_blank">here</a>
