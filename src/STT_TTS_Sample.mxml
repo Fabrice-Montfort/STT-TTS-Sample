@@ -1,0 +1,414 @@
+<?xml version="1.0" encoding="utf-8"?>
+<f:Application xmlns:f="library://ns.feathersui.com/mxml"
+               xmlns:fx="http://ns.adobe.com/mxml/2009"
+               theme="feathers.themes.MetalWorksMobileTheme">
+
+    <fx:Script>
+        <![CDATA[
+        import feathers.controls.Alert;
+
+        import starling.events.Event;
+
+        /**
+         * STT and TTS AIR Native Extensions
+         */
+
+        import com.fabricemontfort.air.ezSTT;
+        import com.fabricemontfort.air.ezSpeech;
+        import com.fabricemontfort.air.ezspeech.languages;
+        import com.fabricemontfort.air.ezstt.STTEvent;
+        import com.fabricemontfort.air.ezstt.languages;
+
+        /**
+         * Text To Speech engine
+         */
+        private var tts:ezSpeech = ezSpeech.instance;
+
+        /**
+         * Speech To Text engine
+         */
+        private var stt:ezSTT = ezSTT.instance;
+
+        /**
+         * actionButton Labels
+         */
+        private static const OUCH:String = "NOT SUPPORTED";
+        private static const AUTH:String = "ASK PERMISSIONS";
+        private static const START:String = "START LISTENING";
+        private static const STOP:String = "STOP LISTENING";
+
+        /**
+         * STT/TTS utterance
+         */
+        private var _utterance:String = "";
+
+        [Bindable]
+        public function get utterance():String {
+            return _utterance;
+        }
+
+        public function set utterance(value:String):void {
+            _utterance = value;
+            resultLabel.text = _utterance;
+        }
+
+        /**
+         * STT Microphone volume
+         */
+        private var _volume:Number = 0;
+
+        [Bindable]
+        public function get volume():Number {
+            return _volume;
+        }
+
+        public function set volume(value:Number):void {
+            _volume = value;
+        }
+
+        /**
+         * Initialize TTS speed
+         */
+        private var _speed:Number = 0.48;
+
+        [Bindable]
+        public function get speed():Number {
+            return _speed;
+        }
+
+        public function set speed(value:Number):void {
+            _speed = value;
+            tts.setSpeed(speed);
+        }
+
+        /**
+         * Initialize TTS pitch
+         */
+        private var _pitch:Number = 0.65;
+
+        [Bindable]
+        public function get pitch():Number {
+            return _pitch;
+        }
+
+        public function set pitch(value:Number):void {
+            _pitch = value;
+            tts.setPitch(pitch);
+        }
+
+        override protected function initialize():void {
+            super.initialize();
+
+            // Hide debug messages for ezSTT and ezSpeech
+            stt.debug = false;
+            tts.debug = false;
+            // Set TTS voice speed
+            tts.setSpeed(speed);
+            // Set TTS voice pitch
+            tts.setPitch(pitch);
+            // Set default language for engines
+            stt.setLanguage(com.fabricemontfort.air.ezstt.languages.EN);
+            tts.setLanguage(com.fabricemontfort.air.ezspeech.languages.US);
+
+            // Check if STT is supported
+            if (stt.isSupported()) {
+                // Check if STT is authorized
+                if (stt.isAuthorized()) {
+                    // Add STT listeners for final result, partial result, volume, end of speech
+                    stt.addEventListener(STTEvent.PARTIAL, onSTTResult);
+                    stt.addEventListener(STTEvent.FINAL, onSTTResult);
+                    stt.addEventListener(STTEvent.VOL, onSTTVolume);
+                    stt.addEventListener(STTEvent.STOP, onSTTStop);
+                    // Everything is fine, lets start
+                    actionButton.label = START;
+                    // STT is not autorized
+                } else {
+                    // Initialize STT listener for permissions
+                    stt.addEventListener(STTEvent.AUTH, onAuth);
+                    actionButton.label = AUTH;
+                }
+                // STT is not supported
+            } else {
+                actionButton.label = OUCH;
+                var alert:Alert = Alert.show("STT is not supported", "Error", new ListCollection(
+                        [
+                            {label: "OK"}
+                        ]));
+            }
+        }
+
+        /**
+         * STT engine recognized words
+         */
+        private function onSTTResult(event:STTEvent):void {
+            // Set utterance with partial and final result
+            utterance = event.message;
+        }
+
+        /**
+         * The microphone volume changed
+         */
+        private function onSTTVolume(event:STTEvent):void {
+            // Set STT microphone volume
+            volume = parseInt(event.message);
+        }
+
+        /**
+         * User stopped speaking or clicked the stop button
+         */
+        private function onSTTStop(event:STTEvent):void {
+            actionButton.label = START;
+            volume = 0;
+            // Wait 1 second before repeating last utterance
+            setTimeout(repeatUtterance, 1000);
+        }
+
+        private function onAuth(event:STTEvent):void {
+            // Check if STT is authorized
+            if (stt.isAuthorized()) {
+                // Remove this listener
+                stt.removeEventListener(STTEvent.AUTH, onAuth);
+                // Add STT listeners for final result, partial result, volume, end of speech
+                stt.addEventListener(STTEvent.PARTIAL, onSTTResult);
+                stt.addEventListener(STTEvent.FINAL, onSTTResult);
+                stt.addEventListener(STTEvent.VOL, onSTTVolume);
+                stt.addEventListener(STTEvent.STOP, onSTTStop);
+                // Everything is fine, lets start
+                actionButton.label = START;
+                // STT is not autorized
+            } else {
+                // Show an error message
+                var alert:Alert = Alert.show("Please give permissions and retry", "Error", new ListCollection(
+                        [
+                            {label: "OK"}
+                        ]));
+            }
+        }
+
+        private function actionButton_triggeredHandler(event:Event):void {
+            // Check actionButton label
+            switch (actionButton.label) {
+                    // Ask for permissions
+                case AUTH: {
+                    stt.askUserAuthorization();
+                    break;
+                }
+                    // Start STT engine and change label
+                case START: {
+                    stt.start();
+                    actionButton.label = STOP;
+                    break;
+                }
+                    // Stop STT engine and change label
+                case STOP: {
+                    stt.stop();
+                    actionButton.label = START;
+                    break;
+                }
+            }
+        }
+
+        /**
+         * User changed the current language
+         */
+        private function langPickerList_changeHandler(event:Event):void {
+            // Set current language for STT and TTS engines
+            stt.setLanguage(langPickerList.selectedItem.code);
+            tts.setLanguage(langPickerList.selectedItem.codeSpeech);
+        }
+
+        /**
+         * User asked to enforce a specific language with country code
+         */
+        private function forceLangTextInput_changeHandler(event:Event):void {
+            // Try to enfore current language for STT and TTS engines (experimental)
+            stt.forceLanguage(forceLangTextInput.text);
+            tts.forceLanguage(forceLangTextInput.text);
+        }
+
+        /**
+         * User asked to repeat the utterance
+         */
+        private function sayButton_triggeredHandler(event:starling.events.Event):void {
+            repeatUtterance();
+        }
+
+        private function repeatUtterance():void {
+            // if utterence is not empty
+            if (utterance != "" && utterance != "[]") {
+                // and tts is supported
+                if (tts.isSupported()) {
+                    // Let's talk
+                    tts.say(utterance);
+                    // tts is not supported
+                } else {
+                    // show a error message
+                    var alert:Alert = Alert.show("TTS is not supported", "Error", new ListCollection(
+                            [
+                                {label: "OK"}
+                            ]));
+                }
+            }
+        }
+
+        /**
+         * User changed the speed Slider
+         */
+        private function speedSlider_changeHandler(event:Event):void {
+            speed = speedSlider.value;
+        }
+
+        /**
+         * User changed the pitch Slider
+         */
+        private function pitchSlider_changeHandler(event:starling.events.Event):void {
+            pitch = pitchSlider.value;
+        }
+        ]]>
+    </fx:Script>
+
+    <!-- This is a vertical layout with padding and gapping of 10 -->
+    <f:layout>
+        <f:VerticalLayout gap="10"
+                          padding="10"/>
+    </f:layout>
+
+    <fx:Declarations>
+        <!-- Fit the target component to the maximum available space -->
+        <f:VerticalLayoutData id="fitScreen"
+                              percentWidth="100"
+                              percentHeight="100"/>
+
+        <!-- Fit the target component to me maximum width -->
+        <f:VerticalLayoutData id="fitWidth"
+                              percentWidth="100"/>
+
+        <!-- List of all supported languages -->
+        <f:ListCollection id="langListCollection">
+            <fx:Object label="English"
+                       code="{com.fabricemontfort.air.ezstt.languages.EN}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.US}"/>
+            <fx:Object label="French"
+                       code="{com.fabricemontfort.air.ezstt.languages.FR}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.FR}"/>
+            <fx:Object label="German"
+                       code="{com.fabricemontfort.air.ezstt.languages.DE}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.DE}"/>
+            <fx:Object label="Italian"
+                       code="{com.fabricemontfort.air.ezstt.languages.IT}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.IT}"/>
+            <fx:Object label="Spanish"
+                       code="{com.fabricemontfort.air.ezstt.languages.ES}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.ES}"/>
+            <fx:Object label="Chinese"
+                       code="{com.fabricemontfort.air.ezstt.languages.ZH}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.ZH}"/>
+            <fx:Object label="Japanese"
+                       code="{com.fabricemontfort.air.ezstt.languages.JA}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.JA}"/>
+            <fx:Object label="Russian"
+                       code="{com.fabricemontfort.air.ezstt.languages.RU}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.RU}"/>
+            <fx:Object label="Korean"
+                       code="{com.fabricemontfort.air.ezstt.languages.KO}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.KO}"/>
+            <fx:Object label="Portuguese"
+                       code="{com.fabricemontfort.air.ezstt.languages.PT}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.PT}"/>
+            <fx:Object label="Czech"
+                       code="{com.fabricemontfort.air.ezstt.languages.CS}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.CS}"/>
+            <fx:Object label="Dutch"
+                       code="{com.fabricemontfort.air.ezstt.languages.NL}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.NL}"/>
+            <fx:Object label="Polish"
+                       code="{com.fabricemontfort.air.ezstt.languages.PL}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.PL}"/>
+            <fx:Object label="Swedish"
+                       code="{com.fabricemontfort.air.ezstt.languages.SV}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.SV}"/>
+            <fx:Object label="Turkish"
+                       code="{com.fabricemontfort.air.ezstt.languages.TR}"
+                       codeSpeech="{com.fabricemontfort.air.ezspeech.languages.TR}"/>
+        </f:ListCollection>
+    </fx:Declarations>
+
+    <f:Panel id="resultPanel"
+             title="RESULTS"
+             layoutData="{fitScreen}">
+        <f:layout>
+            <f:VerticalLayout padding="10"/>
+        </f:layout>
+
+        <!-- This is where user can read the utterance -->
+        <f:Label id="resultLabel"
+                 wordWrap="true"
+                 text="{utterance}"
+                 layoutData="{fitScreen}"/>
+
+    </f:Panel>
+
+    <f:Label text="TTS VOICE SPEED"
+             layoutData="{fitWidth}"/>
+
+    <!-- This is where the user can change the TTS voice speed -->
+    <f:Slider id="speedSlider"
+              change="speedSlider_changeHandler(event)"
+              layoutData="{fitWidth}"
+              minimum="0"
+              maximum="1"
+              step="0.05"
+              value="{speed}"/>
+
+    <f:Label text="TTS VOICE PITCH"
+             layoutData="{fitWidth}"/>
+
+    <!-- This is where the user can change the TTS voice pitch -->
+    <f:Slider id="pitchSlider"
+              change="pitchSlider_changeHandler(event)"
+              layoutData="{fitWidth}"
+              minimum="0.5"
+              maximum="1.5"
+              step="0.05"
+              value="{pitch}"/>
+
+    <f:Label text="STT MICROPHONE VOLUME"/>
+
+    <!-- This is where the user can see the STT microphone volume -->
+    <f:ProgressBar id="volumeBar"
+                   minimum="0"
+                   maximum="12"
+                   value="{volume}"
+                   layoutData="{fitWidth}"/>
+
+    <!-- This is where the user can pick a language -->
+    <f:PickerList id="langPickerList"
+                  change="langPickerList_changeHandler(event)"
+                  focusPadding="20"
+                  dataProvider="{langListCollection}"
+                  layoutData="{fitWidth}"/>
+
+    <f:Label id="forceLangLabel"
+             text="TEST A COUNTRY CODE (EXPERIMENTAL)"
+             layoutData="{fitWidth}"/>
+
+    <!-- This is where the user can enforce a language with country code -->
+    <f:TextInput id="forceLangTextInput"
+                 padding="20"
+                 change="forceLangTextInput_changeHandler(event)"
+                 layoutData="{fitWidth}"/>
+
+    <!-- This is where the user have to click to give permissions, start speaking, stop speaking -->
+    <f:Button id="actionButton"
+              padding="20"
+              triggered="actionButton_triggeredHandler(event)"
+              layoutData="{fitWidth}"/>
+
+    <!-- This is where the user have to click to repeat the utterance -->
+    <f:Button id="sayButton"
+              padding="20"
+              label="REPEAT THE LAST UTTERANCE"
+              triggered="sayButton_triggeredHandler(event)"
+              layoutData="{fitWidth}"/>
+
+</f:Application>
